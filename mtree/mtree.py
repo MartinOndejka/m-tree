@@ -54,13 +54,13 @@ class MTree:
         node_size=DEFAULT_NODE_SIZE,
         df=euclidean_distance,
         promotion_method=promote_random,
-        partiotion_method=None
+        partition_method=None
     ):
         self.root = Node()
         self.node_size = node_size
         self.df = df
         self.promote = promotion_method
-        self.partition = partiotion_method if partiotion_method else partition_generalized_hyperplane(df)
+        self.partition = partition_method if partition_method else partition_generalized_hyperplane(df)
 
     def add(self, obj):
         self._insert(self.root, obj)
