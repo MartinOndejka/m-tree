@@ -12,7 +12,7 @@ def main():
         ]
     )
 
-    print(db)
+    print("asd")
 
 if __name__ == '__main__':
     main()
