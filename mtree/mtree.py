@@ -19,3 +19,9 @@ class MTree:
 
     def _split(self, node, obj):
         pass
+
+    def range_query(self, query, radius):
+        pass
+
+    def knn_query(self, query, k):
+        pass
