@@ -1,14 +1,18 @@
-from mtree import MTree, mtree
+from mtree import MTree
 
 
 def main():
-    tree = MTree()
+    db = MTree(node_size=2)
 
-    tree.add(1)
-
-    print(
-        mtree.euclidean_distance((-7, -4), (17, 6.5))
+    db.add_bulk(
+        [
+            (1, 2, 3),
+            (4, 5, 6),
+            (7, 8, 9),
+        ]
     )
+
+    print(db)
 
 if __name__ == '__main__':
     main()
