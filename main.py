@@ -2,7 +2,9 @@ from mtree import MTree
 
 
 def main():
-    pass
+    mtree = MTree()
+
+    mtree.add(1)
 
 if __name__ == '__main__':
     main()
