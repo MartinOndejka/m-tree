@@ -1,9 +1,10 @@
 import abc
 from heapq import heappush, heappop
 import collections
-from itertools import islice
+from itertools import islice, combinations
 import math
 import random
+from operator import itemgetter
 
 
 def euclidean_distance(a, b):
@@ -13,46 +14,47 @@ def euclidean_distance(a, b):
         )    
     )
 
-def m_lb_dist_promotion(entries, current_routing_entry, d):
-    # zjednodusil som to a vybere to nahodne pokial to nema predpocitane
-    if current_routing_entry is None or any(e.distance_to_parent is None for e in entries):
+
+def m_lb_dist_promote(entries, old, d):
+    if old is None or any(e.distance_to_parent is None for e in entries):
         o1, o2 = random.sample(entries, 2)
         return o1.obj, o2.obj
     
     new_entry = max(entries, key=lambda e: e.distance_to_parent)
-    return current_routing_entry.obj, new_entry.obj
+    return old.obj, new_entry.obj
     
 
-#If the routing objects are not in entries it is possible that
-#all the elements are in one set and the other set is empty.
-def generalized_hyperplane(entries, routing_object1, routing_object2, d):
-    """Partition algorithm.
-    Each entry is assigned to the routing_object to which it is the closest.
-    This is an unbalanced partition strategy.
-    Return a tuple of two elements. The first one is the set of entries
-    assigned to the routing_object1 while the second is the set of entries
-    assigned to the routing_object2"""
-    partition = (set(), set())
-    for entry in entries:
-        partition[d(entry.obj, routing_object1) > \
-                         d(entry.obj, routing_object2)].add(entry)
+def balanced_distribution(entries, o1, o2, d):
+    distances = list(map(
+        lambda entry: {
+            "o1": d(o1, entry.obj),
+            "o2": d(o2, entry.obj),
+            "obj": entry,
+        },
+        entries
+    ))
 
-    if not partition[0] or not partition[1]:
-        #all objects have been put on the same routing_object
-        #can only happen if all objects are the same point (d() always 0)
-        #fix by splitting the group in two
-        partition = (set(islice(entries, len(entries)//2)),
-                     set(islice(entries, len(entries)//2, len(entries))))
+    o1_set, o2_set = set(), set()
 
-    return partition
+    for i in range(len(distances)):
+        if i % 2 == 0:
+            distances.sort(key=itemgetter("o1"), reverse=True)
+            o1_set.add(distances[-1]["obj"])
+        else:
+            distances.sort(key=itemgetter("o2"), reverse=True)
+            o2_set.add(distances[-1]["obj"])
+
+        distances.pop()
+
+    return o1_set, o2_set
 
 
 class MTree(object):
     def __init__(self,
                  d=euclidean_distance,
                  max_node_size=4,
-                 promote=m_lb_dist_promotion,
-                 partition=generalized_hyperplane):
+                 promote=m_lb_dist_promote,
+                 partition=balanced_distribution):
         """
         Create a new MTree.
         Arguments:
