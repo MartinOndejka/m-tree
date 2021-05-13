@@ -1,43 +1,27 @@
 import abc
 from heapq import heappush, heappop
 import collections
-from itertools import combinations, islice
+from itertools import islice
+import math
+import random
 
 
-def M_LB_DIST_confirmed(entries, current_routing_entry, d):
-    """Promotion algorithm. Maximum Lower Bound on DISTance. Confirmed.
-    Return the object that is the furthest apart from current_routing_entry 
-    using only precomputed distances stored in the entries.
+def euclidean_distance(a, b):
+    return math.sqrt(
+        sum(
+            map(lambda a, b: (a - b) ** 2, *[a, b])
+        )    
+    )
+
+def m_lb_dist_promotion(entries, current_routing_entry, d):
+    # zjednodusil som to a vybere to nahodne pokial to nema predpocitane
+    if current_routing_entry is None or any(e.distance_to_parent is None for e in entries):
+        o1, o2 = random.sample(entries, 2)
+        return o1.obj, o2.obj
     
-    This algorithm does not work if current_routing_entry is None and the
-    distance_to_parent in entries are None. This will happen when handling
-    the root. In this case the work is delegated to M_LB_DIST_non_confirmed.
-    
-    arguments:
-    entries: set of entries from which two routing objects must be promoted.
-    current_routing_entry: the routing_entry that was used
-    for the node containing the entries previously.
-    None if the node from which the entries come from is the root.
-    d: distance function.
-    """
-    if current_routing_entry is None or \
-            any(e.distance_to_parent is None for e in entries):
-        return M_LB_DIST_non_confirmed(entries,
-                                       current_routing_entry,
-                                       d)
-    
-    #if entries contain only one element or two elements twice the same, then
-    #the two routing elements returned could be the same. (could that happen?)
     new_entry = max(entries, key=lambda e: e.distance_to_parent)
-    return (current_routing_entry.obj, new_entry.obj)
-
-def M_LB_DIST_non_confirmed(entries, unused_current_routing_entry, d):
-    """Promotion algorithm. Maximum Lower Bound on DISTance. Non confirmed.
-    Compares all pair of objects (in entries) and select the two who are
-    the furthest apart.
-    """
-    objs = map(lambda e: e.obj, entries)
-    return max(combinations(objs, 2), key=lambda two_objs: d(*two_objs))
+    return current_routing_entry.obj, new_entry.obj
+    
 
 #If the routing objects are not in entries it is possible that
 #all the elements are in one set and the other set is empty.
@@ -65,9 +49,9 @@ def generalized_hyperplane(entries, routing_object1, routing_object2, d):
 
 class MTree(object):
     def __init__(self,
-                 d,
+                 d=euclidean_distance,
                  max_node_size=4,
-                 promote=M_LB_DIST_confirmed,
+                 promote=m_lb_dist_promotion,
                  partition=generalized_hyperplane):
         """
         Create a new MTree.

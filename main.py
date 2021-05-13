@@ -2,17 +2,16 @@ from mtree import MTree
 
 
 def main():
-    db = MTree(node_size=2)
+    d = lambda a, b: abs(a - b)
 
-    db.add_bulk(
-        [
-            (1, 2, 3),
-            (4, 5, 6),
-            (7, 8, 9),
-        ]
+    db = MTree(d=d, max_node_size=3)
+
+    db.add_all([11, 13, 3, 27, 24, 1, 36, 6, 10, 2])
+
+    print(
+        list(db.search(20,3))
     )
 
-    print("asd")
 
 if __name__ == '__main__':
     main()
