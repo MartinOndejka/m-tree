@@ -53,41 +53,11 @@ def balanced_distribution(entries, o1, o2, d):
 class MTree(object):
     def __init__(self,
                  d=euclidean_distance,
-                 max_node_size=4,
+                 node_size=4,
                  promote=m_lb_dist_promote,
                  partition=balanced_distribution):
-        """
-        Create a new MTree.
-        Arguments:
-        d: distance function.
-        max_node_size: optional. Maximum number of entries in a node of
-            the M-tree
-        promote: optional. Used during insertion of a new value when
-            a node of the tree is split in two.
-            Determines given the set of entries which two entries should be
-            used as routing object to represent the two nodes in the
-            parent node.
-            This is delving pretty far into implementation choices of
-            the Mtree. If you don't understand all this just swallow
-            the blue pill, use the default value and you'll be fine.
-        partition: optional. Used during insertion of a new value when
-            a node of the tree is split in two.
-            Determines to which of the two routing object each entry of the
-            split node should go.
-            This is delving pretty far into implementation choices of
-            the Mtree. If you don't understand all this just swallow
-            the blue pill, use the default value and you'll be fine.
-        """
-        if not callable(d):
-            #Why the hell did I put this?
-            #This is python, we use dynamic typing and assumes the user
-            #of the API is smart enough to pass the right parameters.
-            raise TypeError('d is not a function')
-        if max_node_size < 2:
-            raise ValueError('max_node_size must be >= 2 but is %d' %
-                             max_node_size)
         self.d = d
-        self.max_node_size = max_node_size
+        self.node_size = node_size
         self.promote = promote
         self.partition = partition
         self.size = 0
@@ -97,18 +67,11 @@ class MTree(object):
         return self.size
 
     def add(self, obj):
-        """
-        Add an object into the M-tree
-        """
         self.root.add(obj)
         self.size += 1
 
-    def add_all(self, iterable):
-        """
-        Add all the elements in the M-tree
-        """
-        #TODO: implement using the bulk-loading algorithm
-        for obj in iterable:
+    def add_bulk(self, objects):
+        for obj in objects:
             self.add(obj)
 
     def search(self, query_obj, k=1):
@@ -280,7 +243,7 @@ class AbstractNode(object):
         return self.mtree.d
 
     def is_full(self):
-        return len(self) == self.mtree.max_node_size
+        return len(self) == self.mtree.node_size
 
     def is_empty(self):
         return len(self) == 0
