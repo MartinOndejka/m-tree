@@ -39,6 +39,7 @@ def balanced_distribution(entries, o1, o2, d):
     for i in range(len(distances)):
         if i % 2 == 0:
             distances.sort(key=itemgetter("o1"), reverse=True)
+            distances
             o1_set.add(distances[-1]["obj"])
         else:
             distances.sort(key=itemgetter("o2"), reverse=True)
@@ -305,7 +306,7 @@ class AbstractNode(object):
     def set_entries_and_parent_entry(self, new_entries, new_parent_entry):
         self.entries = new_entries
         self.parent_entry = new_parent_entry
-        self.parent_entry.radius = self.covering_radius_for(self.parent_entry.obj)
+        self.parent_entry.radius = self.update_radius(self.parent_entry.obj)
         self._update_entries_distance_to_parent()
 
     #wastes d computations if parent hasn't changed.
@@ -323,7 +324,7 @@ class AbstractNode(object):
         pass
 
     @abc.abstractmethod         
-    def covering_radius_for(self, obj): # pragma: no cover
+    def update_radius(self, obj): # pragma: no cover
         """Compute the radius needed for obj to cover the entries of this node.
         """
         pass
@@ -356,7 +357,7 @@ class LeafNode(AbstractNode):
             split(self, new_entry, self.d)
         assert self.is_root() or self.parent_node        
 
-    def covering_radius_for(self, obj):
+    def update_radius(self, obj):
         """Compute minimal radius for obj so that it covers all the objects
         of this node.
         """
@@ -388,7 +389,8 @@ class LeafNode(AbstractNode):
                 distance_entry_to_q = self.d(entry.obj, query_obj)
                 if distance_entry_to_q <= nn.search_radius():
                     nn.update(entry.obj, distance_entry_to_q)
-    
+
+
 class InternalNode(AbstractNode):
     """An internal node of the M-tree"""
 
@@ -433,7 +435,7 @@ class InternalNode(AbstractNode):
         entry.subtree.add(obj)
         assert self.is_root() or self.parent_node
 
-    def covering_radius_for(self, obj):
+    def update_radius(self, obj):
         """Compute minimal radius for obj so that it covers the radiuses
         of all the routing objects of this node
         """
@@ -479,102 +481,66 @@ class InternalNode(AbstractNode):
                     entry_dmax = d_entry_query + entry.radius
                     if entry_dmax < nn.search_radius():
                         nn.update(None, entry_dmax)
-                        
-#A lot of the code is duplicated to do the same operation on the existing_node
-#and the new node :(. Could prevent that by creating a set of two elements and
-#perform on the (two) elements of that set.
-#TODO: Ugly, complex code. Move some code in Node/Entry?
-def split(existing_node, entry, d):
-    """
-    Split existing_node into two nodes.
-    Adding entry to existing_node causes an overflow. Therefore we
-    split existing_node into two nodes.
-    
-    Arguments:
-    existing_node: full node to which entry should have been added
-    entry: the added node. Caller must ensures that entry is initialized
-           correctly as it would be if it were an effective entry of the node.
-           This means that distance_to_parent must possess the appropriate
-           value (the distance to existing_node.parent_entry).
-    d: distance function.
-    """
-    assert existing_node.is_full()
-    mtree = existing_node.mtree
-    #type of the new node must be the same as existing_node
-    #parent node, parent entry and entries are set later
-    new_node = type(existing_node)(existing_node.mtree)
-    all_entries = existing_node.entries | set((entry,))
 
-    #It is guaranteed that the current routing entry of the split node
-    #(i.e. existing_node.parent_entry) is the one distance_to_parent
-    #refers to in the entries (including the entry parameter). 
-    #Promote can therefore use distance_to_parent of the entries.
-    routing_object1, routing_object2 = \
-        mtree.promote(all_entries, existing_node.parent_entry, d)
-    entries1, entries2 = mtree.partition(all_entries,
-                                         routing_object1,
-                                         routing_object2,
-                                         d)
-    assert entries1 and entries2, "Error during split operation. All the entries have been assigned to one routing_objects and none to the other! Should never happen since at least the routing objects are assigned to their corresponding set of entries"
-    
-    #must save the old entry of the existing node because it will have
-    #to be removed from the parent node later
-    old_existing_node_parent_entry = existing_node.parent_entry
 
-    #Setting a new parent entry for a node updates the distance_to_parent in
-    #the entries of that node, hence requiring d calls.
-    #promote/partition probably did similar d computations.
-    #How to avoid recomputations between promote, partition and this?
-    #share cache (a dict) passed between functions?
-    #memoization? (with LRU!).
-    #    id to order then put the two objs in a tuple (or rather when fetching
-    #      try both way
-    #    add a function to add value without computing them
-    #      (to add distance_to_parent)
+def split(node, entry, d):
+    # Union node entries with new entry
+    entries = node.entries.copy()
+    entries.add(entry)
 
-    #TODO: build_entry in the node method?
-    existing_node_entry = Entry(routing_object1,
-                                None,#distance_to_parent set later
-                                None,#covering_radius set later
-                                existing_node)    
-    existing_node.set_entries_and_parent_entry(entries1,
-                                               existing_node_entry)
+    # let op be the parent entry of node
+    op = node.parent_entry
 
-    new_node_entry = Entry(routing_object2, 
-                           None,
-                           None,
-                           new_node)
-    new_node.set_entries_and_parent_entry(entries2,
-                                          new_node_entry)
-                                          
-    if existing_node.is_root():
-        new_root_node = InternalNode(existing_node.mtree)
+    # Allocating new node
+    m_tree = node.mtree
+    new_node = None
+    if isinstance(node, InternalNode):
+        new_node = InternalNode(mtree=m_tree)
+    elif isinstance(node, LeafNode):
+        new_node = LeafNode(mtree=m_tree)
 
-        existing_node.parent_node = new_root_node
-        new_root_node.add_entry(existing_node_entry)
-        
+    # promoting o1, o2
+    o1, o2 = m_tree.promote(entries, node.parent_entry, d)
+    # partition all entries
+    entries1, entries2 = m_tree.partition(entries, o1, o2, d)
+
+    # Create routing entries for objects o1, o2
+    o1_entry = Entry(o1, None, None, node)
+    o2_entry = Entry(o2, None, None, new_node)
+
+    # Store partitioned entries into nodes
+    node.set_entries_and_parent_entry(entries1, o1_entry)
+    new_node.set_entries_and_parent_entry(entries2, o2_entry)
+
+    # Store promoted routing entries into parent node
+    if node.is_root():
+        new_root_node = InternalNode(node.mtree)
+
+        node.parent_node = new_root_node
         new_node.parent_node = new_root_node
-        new_root_node.add_entry(new_node_entry)
+
+        new_root_node.add_entry(o1_entry)
+        new_root_node.add_entry(o2_entry)
         
-        mtree.root = new_root_node
+        m_tree.root = new_root_node
     else:
-        parent_node = existing_node.parent_node
+        parent_node = node.parent_node
 
         if not parent_node.is_root():
-            #parent node has itself a parent, therefore the two entries we add
-            #in the parent must have distance_to_parent set appropriately
-            existing_node_entry.distance_to_parent = \
-                d(existing_node_entry.obj, parent_node.parent_entry.obj)
-            new_node_entry.distance_to_parent = \
-                d(new_node_entry.obj, parent_node.parent_entry.obj)
+            # parent node has itself a parent, therefore the two entries we add
+            # in the parent must have distance_to_parent set appropriately
+            o1_entry.distance_to_parent = \
+                d(o1_entry.obj, parent_node.parent_entry.obj)
+            o2_entry.distance_to_parent = \
+                d(o2_entry.obj, parent_node.parent_entry.obj)
 
-        parent_node.remove_entry(old_existing_node_parent_entry)
-        parent_node.add_entry(existing_node_entry)
+        parent_node.remove_entry(op)
+        parent_node.add_entry(o1_entry)
         
         if parent_node.is_full():
-            split(parent_node, new_node_entry, d)
+            split(parent_node, o2_entry, d)
         else:
-            parent_node.add_entry(new_node_entry)
+            parent_node.add_entry(o2_entry)
             new_node.parent_node = parent_node
-    assert existing_node.is_root() or existing_node.parent_node
+    assert node.is_root() or node.parent_node
     assert new_node.is_root() or new_node.parent_node
