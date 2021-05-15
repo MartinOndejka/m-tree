@@ -74,7 +74,7 @@ class MTree(object):
         return self.size
 
     def add(self, obj):
-        self.add(obj)
+        self.root.add(obj)
         self.size += 1
 
     def add_bulk(self, objects):
@@ -169,7 +169,7 @@ class MTree(object):
             parent_node.add_entry(o1_entry)
 
             if parent_node.is_full():
-                self._split(parent_node, o2_entry, d)
+                self.split(parent_node, o2_entry, d)
             else:
                 parent_node.add_entry(o2_entry)
                 new_node.parent_node = parent_node
