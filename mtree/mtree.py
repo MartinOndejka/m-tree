@@ -73,7 +73,7 @@ class MTree(object):
         return self.size
 
     def add(self, obj):
-        self.add(obj)
+        self._insert(obj)
         self.size += 1
 
     def add_bulk(self, objects):
@@ -116,7 +116,20 @@ class MTree(object):
             
         return nn.result_list()
 
-    def split(self, node, entry, d):
+    def _insert(self, obj):
+        leaf = self._find_leaf(self.root, obj)
+        entry = Entry(obj,
+                      p_dist=leaf.d(obj, leaf.parent_entry.obj) if leaf.parent_entry else None)
+
+        if not leaf.is_full():
+            leaf.entries.add(entry)
+        else:
+            self.split(leaf, entry)
+
+    def _find_leaf(self, node, obj):
+        return LeafNode(self)
+
+    def split(self, node, entry):
         # Union node entries with new entry
         entries = node.entries.copy()
         entries.add(entry)
@@ -132,9 +145,9 @@ class MTree(object):
             new_node = LeafNode(mtree=self)
 
         # promoting o1, o2
-        o1, o2 = self.promote(entries, node.parent_entry, d)
+        o1, o2 = self.promote(entries, node.parent_entry, self.d)
         # partition all entries - also computes the new distances
-        entries1, entries2 = self.partition(entries, o1, o2, d)
+        entries1, entries2 = self.partition(entries, o1, o2, self.d)
 
         # Create routing entries for objects o1, o2
         o1_entry = Entry(o1, None, node, None)
@@ -161,14 +174,14 @@ class MTree(object):
             if not parent_node.is_root():
                 # parent node has itself a parent, therefore the two entries we add
                 # in the parent must have distance_to_parent set appropriately
-                o1_entry.p_dist = d(o1_entry.obj, parent_node.parent_entry.obj)
-                o2_entry.p_dist = d(o2_entry.obj, parent_node.parent_entry.obj)
+                o1_entry.p_dist = self.d(o1_entry.obj, parent_node.parent_entry.obj)
+                o2_entry.p_dist = self.d(o2_entry.obj, parent_node.parent_entry.obj)
 
             parent_node.remove_entry(op)
             parent_node.add_entry(o1_entry)
 
             if parent_node.is_full():
-                self._split(parent_node, o2_entry, d)
+                self.split(parent_node, o2_entry)
             else:
                 parent_node.add_entry(o2_entry)
                 new_node.parent_node = parent_node
