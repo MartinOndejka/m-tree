@@ -10,19 +10,24 @@ from operator import itemgetter
 def euclidean_distance(a, b):
     return math.sqrt(
         sum(
-            map(lambda a, b: (a - b) ** 2, *[a, b])
+            map(lambda x, y: (x - y) ** 2, *[a, b])
         )    
     )
 
 
 def m_lb_dist_promote(entries, old, d):
-    if old is None or any(e.distance_to_parent is None for e in entries):
+    if old is None or any(e.p_dist is None for e in entries):
         o1, o2 = random.sample(entries, 2)
         return o1.obj, o2.obj
     
-    new_entry = max(entries, key=lambda e: e.distance_to_parent)
+    new_entry = max(entries, key=lambda e: e.p_dist)
     return old.obj, new_entry.obj
-    
+
+
+def random_promote(entries):
+    o1, o2 = random.sample(entries, 2)
+    return o1.obj, o2.obj
+
 
 def balanced_distribution(entries, o1, o2, d):
     distances = list(map(
@@ -39,11 +44,11 @@ def balanced_distribution(entries, o1, o2, d):
     for i in range(len(distances)):
         if i % 2 == 0:
             distances.sort(key=itemgetter("o1"), reverse=True)
-            distances[-1]["obj"].distance_to_parent = distances[-1]["o1"]
+            distances[-1]["obj"].p_dist = distances[-1]["o1"]
             o1_set.add(distances[-1]["obj"])
         else:
             distances.sort(key=itemgetter("o2"), reverse=True)
-            distances[-1]["obj"].distance_to_parent = distances[-1]["o2"]
+            distances[-1]["obj"].p_dist = distances[-1]["o2"]
             o2_set.add(distances[-1]["obj"])
 
         distances.pop()
@@ -68,7 +73,7 @@ class MTree(object):
         return self.size
 
     def add(self, obj):
-        self.root.add(obj)
+        self.add(obj)
         self.size += 1
 
     def add_bulk(self, objects):
@@ -90,26 +95,85 @@ class MTree(object):
         k = min(k, len(self))
         if k == 0: return []
 
-        #priority queue of subtrees not yet explored ordered by dmin
+        # priority queue of subtrees not yet explored ordered by dmin
         pr = []
         heappush(pr, PrEntry(self.root, 0, 0))
 
-        #at the end will contain the results 
+        # at the end will contain the results
         nn = NN(k)
 
         while pr:
             prEntry = heappop(pr)
             if(prEntry.dmin > nn.search_radius()):
-                #best candidate is too far, we won't have better a answer
-                #we can stop
+                # best candidate is too far, we won't have better a answer
+                # we can stop
                 break
             prEntry.tree.search(query_obj, pr, nn, prEntry.d_query)
 
-            #could prune pr here
-            #(the paper prunes after each entry insertion, instead whe could
-            #prune once after handling all the entries of a node)
+            # could prune pr here
+            # (the paper prunes after each entry insertion, instead whe could
+            # prune once after handling all the entries of a node)
             
         return nn.result_list()
+
+    def split(self, node, entry, d):
+        # Union node entries with new entry
+        entries = node.entries.copy()
+        entries.add(entry)
+
+        # let op be the parent entry of node
+        op = node.parent_entry
+
+        # Allocating new node
+        new_node = None
+        if isinstance(node, InternalNode):
+            new_node = InternalNode(mtree=self)
+        elif isinstance(node, LeafNode):
+            new_node = LeafNode(mtree=self)
+
+        # promoting o1, o2
+        o1, o2 = self.promote(entries, node.parent_entry, d)
+        # partition all entries - also computes the new distances
+        entries1, entries2 = self.partition(entries, o1, o2, d)
+
+        # Create routing entries for objects o1, o2
+        o1_entry = Entry(o1, None, node, None)
+        o2_entry = Entry(o2, None, new_node, None)
+
+        # Store partitioned entries into nodes
+        node.update_node(entries1, o1_entry)
+        new_node.update_node(entries2, o2_entry)
+
+        # Store promoted routing entries into parent node
+        if node.is_root():
+            new_root_node = InternalNode(node.mtree)
+
+            node.parent_node = new_root_node
+            new_node.parent_node = new_root_node
+
+            new_root_node.add_entry(o1_entry)
+            new_root_node.add_entry(o2_entry)
+
+            self.root = new_root_node
+        else:
+            parent_node = node.parent_node
+
+            if not parent_node.is_root():
+                # parent node has itself a parent, therefore the two entries we add
+                # in the parent must have distance_to_parent set appropriately
+                o1_entry.p_dist = d(o1_entry.obj, parent_node.parent_entry.obj)
+                o2_entry.p_dist = d(o2_entry.obj, parent_node.parent_entry.obj)
+
+            parent_node.remove_entry(op)
+            parent_node.add_entry(o1_entry)
+
+            if parent_node.is_full():
+                self._split(parent_node, o2_entry, d)
+            else:
+                parent_node.add_entry(o2_entry)
+                new_node.parent_node = parent_node
+        assert node.is_root() or node.parent_node
+        assert new_node.is_root() or new_node.parent_node
 
 
 class RangeSearch:
@@ -133,7 +197,7 @@ class RangeSearch:
 
         if isinstance(node, InternalNode):
             for o_i in node.entries:
-                if abs(d_op_q - o_i.distance_to_parent) <= r + o_i.radius:
+                if abs(d_op_q - o_i.p_dist) <= r + o_i.radius:
                     d_oi_q = self.d(o_i.obj, query)
 
                     if d_oi_q <= r + o_i.radius:
@@ -141,7 +205,7 @@ class RangeSearch:
         
         else:
             for o_i in node.entries:
-                if abs(d_op_q - o_i.distance_to_parent) < r:
+                if abs(d_op_q - o_i.p_dist) < r:
                     d_oi_q = self.d(o_i.obj, query)
 
                     if d_oi_q <= r:
@@ -205,41 +269,24 @@ class PrEntry(object):
 
     
 class Entry(object):
-    """
-    
-    The leafs and internal nodes of the M-tree contain a list of instances of
-    this class.
-    The distance to the parent is None if the node in which this entry is
-    stored has no parent.
-    radius and subtree are None if the entry is contained in a leaf.
-    Used in set and dict even tough eq and hash haven't been redefined
-    """
-    def __init__(self,
-                 obj,
-                 distance_to_parent=None,
-                 radius=None,
-                 subtree=None):
+    def __init__(self, obj, radius=None, subtree=None, p_dist=None):
         self.obj = obj
-        self.distance_to_parent = distance_to_parent
         self.radius = radius
         self.subtree = subtree
+        self.p_dist = p_dist
 
     def __repr__(self):
-        return "Entry(obj: %r, dist: %r, radius: %r, subtree: %r)" % (
+        return "Entry(obj: %r, radius: %r, subtree: %r, dist: %r)" % (
             self.obj,
-            self.distance_to_parent,
             self.radius,
-            self.subtree.repr_class() if self.subtree else self.subtree)
+            self.subtree.repr_class() if self.subtree else self.subtree,
+            self.p_dist)
 
 
 class AbstractNode(object):
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self,
-                 mtree,
-                 parent_node=None,
-                 parent_entry=None,
-                 entries=None):
+    def __init__(self, mtree, parent_node=None, parent_entry=None, entries=None):
         self.mtree = mtree
         self.parent_node = parent_node
         self.parent_entry = parent_entry
@@ -323,18 +370,18 @@ class LeafNode(AbstractNode):
     def add(self, obj):
         distance_to_parent = self.d(obj, self.parent_entry.obj) \
             if self.parent_entry else None
-        new_entry = Entry(obj, distance_to_parent)
+        new_entry = Entry(obj, p_dist=distance_to_parent)
         if not self.is_full():
             self.entries.add(new_entry)
         else:
-            split(self, new_entry, self.d)
+            self.mtree.split(self, new_entry, self.d)
         assert self.is_root() or self.parent_node        
 
     def _update_radius(self):
         if not self.entries:
             self.parent_entry.radius = 0
         else:
-            self.parent_entry.radius = max(map(lambda e: e.distance_to_parent, self.entries))
+            self.parent_entry.radius = max(map(lambda e: e.p_dist, self.entries))
 
     def could_contain_results(self,
                               query_obj,
@@ -354,7 +401,7 @@ class LeafNode(AbstractNode):
         for entry in self.entries:
             if self.could_contain_results(query_obj,
                                           nn.search_radius(),
-                                          entry.distance_to_parent,
+                                          entry.p_dist,
                                           d_parent_query):
                 distance_entry_to_q = self.d(entry.obj, query_obj)
                 if distance_entry_to_q <= nn.search_radius():
@@ -408,7 +455,7 @@ class InternalNode(AbstractNode):
         if not self.entries:
             self.parent_entry.radius = 0
         else:
-            self.parent_entry.radius = max(map(lambda e: e.distance_to_parent + e.radius, self.entries))
+            self.parent_entry.radius = max(map(lambda e: e.p_dist + e.radius, self.entries))
 
     def update_node(self, new_entries, new_parent_entry):
         AbstractNode.update_node(self,
@@ -429,7 +476,7 @@ class InternalNode(AbstractNode):
             return True
         
         parent_obj = self.parent_entry.obj
-        return abs(d_parent_query - entry.distance_to_parent)\
+        return abs(d_parent_query - entry.p_dist)\
                 <= search_radius + entry.radius
             
     def search(self, query_obj, pr, nn, d_parent_query):
@@ -446,64 +493,3 @@ class InternalNode(AbstractNode):
                     entry_dmax = d_entry_query + entry.radius
                     if entry_dmax < nn.search_radius():
                         nn.update(None, entry_dmax)
-
-
-def split(node, entry, d):
-    # Union node entries with new entry
-    entries = node.entries.copy()
-    entries.add(entry)
-
-    # let op be the parent entry of node
-    op = node.parent_entry
-
-    # Allocating new node
-    m_tree = node.mtree
-    new_node = None
-    if isinstance(node, InternalNode):
-        new_node = InternalNode(mtree=m_tree)
-    elif isinstance(node, LeafNode):
-        new_node = LeafNode(mtree=m_tree)
-
-    # promoting o1, o2
-    o1, o2 = m_tree.promote(entries, node.parent_entry, d)
-    # partition all entries
-    entries1, entries2 = m_tree.partition(entries, o1, o2, d)
-
-    # Create routing entries for objects o1, o2
-    o1_entry = Entry(o1, None, None, node)
-    o2_entry = Entry(o2, None, None, new_node)
-
-    # Store partitioned entries into nodes
-    node.update_node(entries1, o1_entry)
-    new_node.update_node(entries2, o2_entry)
-
-    # Store promoted routing entries into parent node
-    if node.is_root():
-        new_root_node = InternalNode(node.mtree)
-
-        node.parent_node = new_root_node
-        new_node.parent_node = new_root_node
-
-        new_root_node.add_entry(o1_entry)
-        new_root_node.add_entry(o2_entry)
-        
-        m_tree.root = new_root_node
-    else:
-        parent_node = node.parent_node
-
-        if not parent_node.is_root():
-            # parent node has itself a parent, therefore the two entries we add
-            # in the parent must have distance_to_parent set appropriately
-            o1_entry.distance_to_parent = d(o1_entry.obj, parent_node.parent_entry.obj)
-            o2_entry.distance_to_parent = d(o2_entry.obj, parent_node.parent_entry.obj)
-
-        parent_node.remove_entry(op)
-        parent_node.add_entry(o1_entry)
-        
-        if parent_node.is_full():
-            split(parent_node, o2_entry, d)
-        else:
-            parent_node.add_entry(o2_entry)
-            new_node.parent_node = parent_node
-    assert node.is_root() or node.parent_node
-    assert new_node.is_root() or new_node.parent_node
