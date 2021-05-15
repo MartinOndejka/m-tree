@@ -1,7 +1,7 @@
 import abc
 from heapq import heappush, heappop
 import collections
-from itertools import islice, combinations
+from itertools import islice
 import math
 import random
 from operator import itemgetter
@@ -73,8 +73,13 @@ class MTree(object):
     def add_bulk(self, objects):
         for obj in objects:
             self.add(obj)
+    
+    def range_search(self, query_obj, r):
+        s = RangeSearch(self)
+        s.search(self.root, query_obj, r)
+        return s.result
 
-    def search(self, query_obj, k=1):
+    def knn(self, query_obj, k=1):
         """Return the k objects the most similar to query_obj.
         Implementation of the k-Nearest Neighbor algorithm.
         Returns a list of the k closest elements to query_obj, ordered by
@@ -104,6 +109,42 @@ class MTree(object):
             #prune once after handling all the entries of a node)
             
         return nn.result_list()
+
+
+class RangeSearch:
+    def __init__(self, mtree):
+        self.result = set()
+        self.mtree = mtree
+
+    @property
+    def d(self):
+        return self.mtree.d
+    
+    def search(self, node, query, r):
+        if node == self.mtree.root:
+            for i in node.entries:
+                self.search(i.subtree, query, r)
+            return
+
+        o_p = node.parent_entry
+
+        d_op_q = self.d(o_p.obj, query) if o_p else 0
+
+        if isinstance(node, InternalNode):
+            for o_i in node.entries:
+                if abs(d_op_q - o_i.distance_to_parent) <= r + o_i.radius:
+                    d_oi_q = self.d(o_i.obj, query)
+
+                    if d_oi_q <= r + o_i.radius:
+                        self.search(o_i.subtree, query, r)
+        
+        else:
+            for o_i in node.entries:
+                if abs(d_op_q - o_i.distance_to_parent) < r:
+                    d_oi_q = self.d(o_i.obj, query)
+
+                    if d_oi_q <= r:
+                        self.result.add(o_i.obj)
 
     
 NNEntry = collections.namedtuple('NNEntry', 'obj dmax')
