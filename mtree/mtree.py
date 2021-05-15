@@ -62,18 +62,30 @@ class MTree(object):
                  d=euclidean_distance,
                  node_size=4,
                  promote=m_lb_dist_promote,
-                 partition=balanced_distribution):
-        self.d = d
+                 partition=balanced_distribution,
+                 dimensions=2):
+        self.d = self.inc_counter(d)
         self.node_size = node_size
         self.promote = promote
         self.partition = partition
         self.size = 0
         self.root = LeafNode(self)
+        self.dimensions = dimensions
+        self.sequential_data = set()
+        self.dcall_counter = 0
+
+    def inc_counter(self, d):
+        def closure(*args, **kwargs):
+            self.dcall_counter += 1
+            return d(*args, **kwargs)
+
+        return closure
 
     def __len__(self):
         return self.size
 
     def add(self, obj):
+        self.sequential_data.add(obj)
         self.root.add(obj)
         self.size += 1
 
@@ -82,11 +94,42 @@ class MTree(object):
             self.add(obj)
     
     def range_search(self, query_obj, r):
+        self.dcall_counter = 0
         s = RangeSearch(self)
         s.search(self.root, query_obj, r)
         return s.result
+    
+    def sequential_range_search(self, query_obj, r):
+        self.dcall_counter = 0
+        distances = map(
+            lambda obj: {
+                "obj": obj,
+                "d": self.d(obj, query_obj),
+            },
+            self.sequential_data,
+        )
+
+        res = filter(lambda obj: obj["d"] <= r, distances)
+        return set(map(itemgetter("obj"), res))
+
+    def sequential_knn(self, query_obj, k=1):
+        self.dcall_counter = 0
+        distances = list(map(
+            lambda obj: {
+                "obj": obj,
+                "d": self.d(obj, query_obj),
+            },
+            self.sequential_data,
+        ))
+
+        distances.sort(key=itemgetter("d"))
+
+        return set(map(itemgetter("obj"), distances[:k]))
+
+        
 
     def knn(self, query_obj, k=1):
+        self.dcall_counter = 0
         """Return the k objects the most similar to query_obj.
         Implementation of the k-Nearest Neighbor algorithm.
         Returns a list of the k closest elements to query_obj, ordered by
