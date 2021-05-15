@@ -1,2 +1,2 @@
-from . import mtree
+from . import mtree, persistence
 from .mtree import MTree
