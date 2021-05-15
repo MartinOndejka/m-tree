@@ -5,6 +5,7 @@ from itertools import islice
 import math
 import random
 from operator import itemgetter
+import pickle
 
 
 def euclidean_distance(a, b):
@@ -141,7 +142,7 @@ class RangeSearch:
         
         else:
             for o_i in node.entries:
-                if abs(d_op_q - o_i.distance_to_parent) < r:
+                if abs(d_op_q - o_i.distance_to_parent) <= r:
                     d_oi_q = self.d(o_i.obj, query)
 
                     if d_oi_q <= r:
