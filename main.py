@@ -1,4 +1,4 @@
-from mtree import MTree
+from mtree import MTree, persistence
 
 
 def main():
@@ -9,8 +9,13 @@ def main():
     db.add_bulk([62, 10, 30, 44, 46, 76, 58, 52, 45, 73, 66, 23, 60, 82, 61, 90, 81, 95, 20, 74, 22, 37, 31, 78, 88, 92, 6, 55, 24, 63, 83, 2, 68, 3, 56, 69, 38, 1, 77, 64])
 
     assert list(db.knn(19,5)) == [20, 22, 23, 24, 10]
+    assert db.range_search(20, 10) == {10, 20, 22, 23, 24, 30}
 
-    print(db.range_search(20, 10))
+    persistence.save_tree(db, "out")
+    test = persistence.load_tree("out", distance_function=d)
+
+    assert list(test.knn(19,5)) == [20, 22, 23, 24, 10]
+    assert test.range_search(20, 10) == {10, 20, 22, 23, 24, 30}
 
 if __name__ == '__main__':
     main()
