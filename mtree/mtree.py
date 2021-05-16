@@ -297,8 +297,6 @@ class AbstractNode(object):
     __metaclass__ = abc.ABCMeta
 
     def __init__(self, mtree, parent_node=None, parent_entry=None, entries=None):
-        if entries is None:
-            entries = set()
         self.mtree = mtree
         self.parent_node = parent_node
         self.parent_entry = parent_entry
