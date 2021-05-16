@@ -2,6 +2,10 @@ import pickle
 from .mtree import euclidean_distance
 
 
+class LoadError(pickle.UnpicklingError):
+    pass
+
+
 def save_tree(mtree, file_path):
     mtree.d = None
 
@@ -11,8 +15,12 @@ def save_tree(mtree, file_path):
 
 def load_tree(file_path, distance_function=euclidean_distance):
     with open(file_path, "rb") as f:
-        mtree = pickle.load(f)
-    
+        try:
+            mtree = pickle.load(f)
+        except pickle.UnpicklingError:
+            raise LoadError
+
+
     mtree.d = distance_function
 
     return mtree
