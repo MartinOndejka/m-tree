@@ -79,6 +79,9 @@ class MTree(object):
             return d(*args, **kwargs)
 
         return closure
+    
+    def set_d_function(self, d):
+        self.d = self.inc_counter(d)
 
     def add(self, obj):
         self.sequential_data.add(obj)

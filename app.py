@@ -10,7 +10,7 @@ db = None
 
 root = tk.Tk()
 root.title("MTree")
-root.geometry("350x450")
+root.geometry("350x550")
 
 
 def update_ui():
@@ -25,6 +25,11 @@ def update_ui():
             wd.configure(state=tk.DISABLED)
         else:
             wd.configure(state=tk.NORMAL)
+    
+    if db is not None:
+        dimension_var.set(f"Vector dimension: {db.dimensions}")
+        node_size_var.set(f"Node size: {db.node_size}")
+        db_size_var.set(f"Tree size: {db.size}")
 
 
 @contextmanager
@@ -61,6 +66,8 @@ def insert_cb():
     if inp:
         with timeit():
             db.add(inp)
+    
+    update_ui()
 
 
 def range_mtree_cb():
@@ -214,6 +221,18 @@ def create_menu(root):
     menu.add_command(label="Save", command=save_cb)
     root.config(menu=menu)
 
+
+info_frame = tk.Frame(root, borderwidth=1, relief=tk.RAISED)
+info_frame.pack(fill=tk.BOTH, expand=True)
+
+dimension_var = tk.StringVar(value="Vector dimension: None")
+tk.Label(info_frame, textvariable=dimension_var).pack()
+
+node_size_var = tk.StringVar(value="Node size: None")
+tk.Label(info_frame, textvariable=node_size_var).pack()
+
+db_size_var = tk.StringVar(value="Tree size: None")
+tk.Label(info_frame, textvariable=db_size_var).pack()
 
 insert_frame = tk.Frame(root, borderwidth=1, relief=tk.RAISED)
 insert_frame.pack(fill=tk.BOTH, expand=True)
