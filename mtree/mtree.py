@@ -121,7 +121,7 @@ class MTree(object):
         if not leaf.is_full():
             leaf.store(entry)
         else:
-            self.split(leaf, entry)
+            self._split(leaf, entry)
 
     def _find_leaf(self, node, obj):
         if isinstance(node, LeafNode):
@@ -138,7 +138,7 @@ class MTree(object):
 
         return self._find_leaf(best[0].subtree, obj)
 
-    def split(self, node, entry):
+    def _split(self, node, entry):
         # Union node entries with new entry
         entries = node.entries.copy()
         entries.add(entry)
@@ -162,11 +162,12 @@ class MTree(object):
         o1_entry = Entry(o1, None, node, None)
         o2_entry = Entry(o2, None, new_node, None)
 
-        # Store partitioned entries into nodes and update parent entry radius and p_dist
+        # Store partitioned entries into nodes and update parent entry radius
         node.update_node(entries1, o1_entry)
         new_node.update_node(entries2, o2_entry)
 
         # Store promoted routing entries into parent node or a new root node
+        # If current node is root, create new root
         if node.is_root():
             new_root = InternalNode(node.mtree)
             self.root = new_root
@@ -176,21 +177,23 @@ class MTree(object):
 
             new_root.store(o1_entry)
             new_root.store(o2_entry)
+        # Current node is not root, replace op_entry with o1_entry
         else:
-            parent_node = node.parent_node
+            np = node.parent_node
+            np.remove(op_entry)
+            np.store(o1_entry)
 
-            if not parent_node.is_root():
-                o1_entry.p_dist = self.d(o1_entry.obj, parent_node.parent_entry.obj)
-                o2_entry.p_dist = self.d(o2_entry.obj, parent_node.parent_entry.obj)
+            # Update distances for promoted entries
+            if not np.is_root():
+                o1_entry.p_dist = self.d(o1_entry.obj, np.parent_entry.obj)
+                o2_entry.p_dist = self.d(o2_entry.obj, np.parent_entry.obj)
 
-            parent_node.remove(op_entry)
-            parent_node.store(o1_entry)
-
-            if parent_node.is_full():
-                self.split(parent_node, o2_entry)
+            # Store o2_entry in np, if np is full, call split on np
+            if np.is_full():
+                self._split(np, o2_entry)
             else:
-                parent_node.store(o2_entry)
-                new_node.parent_node = parent_node
+                np.store(o2_entry)
+                new_node.parent_node = np
 
 
 class RangeSearch:
@@ -222,7 +225,7 @@ class RangeSearch:
         
         else:
             for o_i in node.entries:
-                if abs(d_op_q - o_i.p_dist) < r:
+                if abs(d_op_q - o_i.p_dist) <= r:
                     d_oi_q = self.d(o_i.obj, query)
 
                     if d_oi_q <= r:
@@ -293,9 +296,7 @@ class Entry(object):
         self.p_dist = p_dist
 
 
-class AbstractNode(object):
-    __metaclass__ = abc.ABCMeta
-
+class AbstractNode(abc.ABC):
     def __init__(self, mtree, parent_node=None, parent_entry=None, entries=None):
         self.mtree = mtree
         self.parent_node = parent_node
@@ -312,19 +313,14 @@ class AbstractNode(object):
     def is_root(self):
         return self is self.mtree.root
 
-    def remove(self, entry):
-        self.entries.remove(entry)
-
     def store(self, entry):
         self.entries.add(entry)
 
-    def update_node(self, entries, parent_entry):
-        self.entries = entries
-        self.parent_entry = parent_entry
-        self._update_radius()
+    def remove(self, entry):
+        self.entries.remove(entry)
 
-    @abc.abstractmethod         
-    def _update_radius(self):
+    @abc.abstractmethod
+    def update_node(self, entries, parent_entry):
         pass
 
     @abc.abstractmethod
@@ -333,19 +329,17 @@ class AbstractNode(object):
         
 
 class LeafNode(AbstractNode):
-    def __init__(self,
-                 mtree,
+    def __init__(self, mtree,
                  parent_node=None,
                  parent_entry=None,
                  entries=None):
 
-        AbstractNode.__init__(self, mtree, parent_node, parent_entry, entries)
+        super().__init__(mtree, parent_node, parent_entry, entries)
 
-    def _update_radius(self):
-        if not self.entries:
-            self.parent_entry.radius = 0
-        else:
-            self.parent_entry.radius = max(map(lambda e: e.p_dist, self.entries))
+    def update_node(self, entries, parent_entry):
+        self.entries = entries
+        self.parent_entry = parent_entry
+        self.parent_entry.radius = max(map(lambda e: e.p_dist, self.entries))
 
     def could_contain_results(self,
                               query_obj,
@@ -379,20 +373,15 @@ class InternalNode(AbstractNode):
                  parent_entry=None,
                  entries=None):
 
-        AbstractNode.__init__(self,  mtree, parent_node, parent_entry, entries)
+        super().__init__(mtree, parent_node, parent_entry, entries)
 
-    def update_node(self, new_entries, new_parent_entry):
-        AbstractNode.update_node(self,
-                                 new_entries,
-                                 new_parent_entry)
+    def update_node(self, entries, parent_entry):
+        self.entries = entries
+        self.parent_entry = parent_entry
+        self.parent_entry.radius = max(map(lambda e: e.p_dist + e.radius, self.entries))
+
         for entry in self.entries:
             entry.subtree.parent_node = self
-
-    def _update_radius(self):
-        if not self.entries:
-            self.parent_entry.radius = 0
-        else:
-            self.parent_entry.radius = max(map(lambda e: e.p_dist + e.radius, self.entries))
 
     def could_contain_results(self,
                               query_obj,
