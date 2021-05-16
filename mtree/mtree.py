@@ -1,7 +1,5 @@
 import abc
 from heapq import heappush, heappop
-import collections
-from itertools import islice
 import math
 import random
 from operator import itemgetter
@@ -15,10 +13,9 @@ def euclidean_distance(a, b):
     )
 
 
-def m_lb_dist_promote(entries, old, d):
+def m_lb_dist_promote(entries, old):
     if old is None or any(e.p_dist is None for e in entries):
-        o1, o2 = random.sample(entries, 2)
-        return o1.obj, o2.obj
+        return random_promote(entries)
     
     new_entry = max(entries, key=lambda e: e.p_dist)
     return old.obj, new_entry.obj
@@ -179,7 +176,7 @@ class MTree(object):
             new_node = LeafNode(mtree=self)
 
         # promoting o1, o2
-        o1, o2 = self.promote(entries, node.parent_entry, self.d)
+        o1, o2 = self.promote(entries, node.parent_entry)
         # partition all entries - also computes the new distances
         entries1, entries2 = self.partition(entries, o1, o2, self.d)
 
@@ -264,7 +261,8 @@ class knnSearch:
 
     def search(self, node, query, k):
         if k <= 0:
-            return []
+            self.result = []
+            return
 
         pr = []
         heappush(pr, PrObject(node, 0, 0))
@@ -281,32 +279,28 @@ class knnSearch:
         self.result = nn.result_list()
 
 
-NNEntry = collections.namedtuple('NNEntry', 'obj dmax')
-
-
 class NN(object):
     def __init__(self, size):
-        self.nieghbours = [NNEntry(None, float("inf"))] * size
+        self.neighbours = [(None, float("inf"))] * size
         self.rq = float("inf")
 
     def __len__(self):
-        return len(self.nieghbours)
+        return len(self.neighbours)
 
     def update(self, obj, dmax):
-        if obj == None:
-            #internal node
+        if obj is None:
             self.rq = min(self.rq, dmax)
             return
-        self.nieghbours.append(NNEntry(obj, dmax))
+        self.neighbours.append((obj, dmax))
         for i in range(len(self)-1, 0, -1):
-            if self.nieghbours[i].dmax < self.nieghbours[i-1].dmax:
-                self.nieghbours[i-1], self.nieghbours[i] = self.nieghbours[i], self.nieghbours[i-1]
+            if self.neighbours[i][1] < self.neighbours[i-1][1]:
+                self.neighbours[i-1], self.neighbours[i] = self.neighbours[i], self.neighbours[i-1]
             else:
                 break
-        self.nieghbours.pop()
+        self.neighbours.pop()
 
     def result_list(self):
-        result = map(lambda entry: entry.obj, self.nieghbours)
+        result = map(lambda entry: entry[0], self.neighbours)
         return result
             
 
@@ -373,26 +367,14 @@ class LeafNode(AbstractNode):
         self.parent_entry = parent_entry
         self.parent_entry.radius = max(map(lambda e: e.p_dist, self.entries))
 
-    def could_contain_results(self,
-                              query_obj,
-                              rq,
-                              distance_to_parent, 
-                              d_parent_query):
-        """Determines without any d computation if there could be
-        objects in the subtree belonging to the result.
-        """
+    def could_contain_results(self, rq, distance_to_parent, d_parent_query):
         if self.is_root():
             return True
-        
-        return abs(d_parent_query - distance_to_parent)\
-                <= rq
+        return abs(d_parent_query - distance_to_parent) <= rq
         
     def search(self, query_obj, pr, nn, d_parent_query):
         for entry in self.entries:
-            if self.could_contain_results(query_obj,
-                                          nn.rq,
-                                          entry.p_dist,
-                                          d_parent_query):
+            if self.could_contain_results(nn.rq, entry.p_dist, d_parent_query):
                 distance_entry_to_q = self.d(entry.obj, query_obj)
                 if distance_entry_to_q <= nn.rq:
                     nn.update(entry.obj, distance_entry_to_q)
@@ -415,30 +397,16 @@ class InternalNode(AbstractNode):
         for entry in self.entries:
             entry.subtree.parent_node = self
 
-    def could_contain_results(self,
-                              query_obj,
-                              rq,
-                              entry,
-                              d_parent_query):
-        """Determines without any d computation if there could be
-        objects in the subtree belonging to the result.
-        """
+    def could_contain_results(self, rq, entry, d_parent_query):
         if self.is_root():
             return True
-        
-        parent_obj = self.parent_entry.obj
-        return abs(d_parent_query - entry.p_dist)\
-                <= rq + entry.radius
+        return abs(d_parent_query - entry.p_dist) <= rq + entry.radius
             
     def search(self, query_obj, pr, nn, d_parent_query):
         for entry in self.entries:
-            if self.could_contain_results(query_obj,
-                                          nn.rq,
-                                          entry,
-                                          d_parent_query):
+            if self.could_contain_results(nn.rq, entry, d_parent_query):
                 d_entry_query = self.d(entry.obj, query_obj)
-                entry_dmin = max(d_entry_query - \
-                                     entry.radius, 0)
+                entry_dmin = max(d_entry_query - entry.radius, 0)
                 if entry_dmin <= nn.rq:
                     heappush(pr, PrObject(entry.subtree, entry_dmin, d_entry_query))
                     entry_dmax = d_entry_query + entry.radius
