@@ -122,12 +122,24 @@ class MTree(object):
                       p_dist=leaf.d(obj, leaf.parent_entry.obj) if leaf.parent_entry else None)
 
         if not leaf.is_full():
-            leaf.entries.add(entry)
+            leaf.add(entry)
         else:
             self.split(leaf, entry)
 
     def _find_leaf(self, node, obj):
-        return LeafNode(self)
+        if isinstance(node, LeafNode):
+            return node
+
+        distances = list(map(lambda e: (e, self.d(e.obj, obj)), node.entries))
+        valid_distances = list(filter(lambda e: e[1] <= e[0].radius, distances))
+
+        if valid_distances:
+            best = min(valid_distances, key=lambda e: e[1])
+        else:
+            best = min(distances, key=lambda e: e[1] - e[0].radius)
+            best[0].radius = best[1]
+
+        return self._find_leaf(best[0].subtree, obj)
 
     def split(self, node, entry):
         # Union node entries with new entry
@@ -164,8 +176,8 @@ class MTree(object):
             node.parent_node = new_root_node
             new_node.parent_node = new_root_node
 
-            new_root_node.add_entry(o1_entry)
-            new_root_node.add_entry(o2_entry)
+            new_root_node.add(o1_entry)
+            new_root_node.add(o2_entry)
 
             self.root = new_root_node
         else:
@@ -177,13 +189,13 @@ class MTree(object):
                 o1_entry.p_dist = self.d(o1_entry.obj, parent_node.parent_entry.obj)
                 o2_entry.p_dist = self.d(o2_entry.obj, parent_node.parent_entry.obj)
 
-            parent_node.remove_entry(op)
-            parent_node.add_entry(o1_entry)
+            parent_node.remove(op)
+            parent_node.add(o1_entry)
 
             if parent_node.is_full():
                 self.split(parent_node, o2_entry)
             else:
-                parent_node.add_entry(o2_entry)
+                parent_node.add(o2_entry)
                 new_node.parent_node = parent_node
         assert node.is_root() or node.parent_node
         assert new_node.is_root() or new_node.parent_node
@@ -305,58 +317,31 @@ class AbstractNode(object):
         self.parent_entry = parent_entry
         self.entries = set(entries) if entries else set()
 
-    def __repr__(self): # pragma: no cover
-        #entries might be big. Only prints the first few elements
-        entries_str = '%s' % list(islice(self.entries, 2))
-        if len(self.entries) > 2:
-            entries_str = entries_str[:-1] + ', ...]'
-            
-        return "%s(parent_node: %s, parent_entry: %s, entries:%s)" % (
-            self.__class__.__name__,
-            self.parent_node.repr_class() \
-                if self.parent_node else self.parent_node,
-            self.parent_entry,
-            entries_str
-            
-    )
-
-    def repr_class(self): # pragma: no cover
-        return self.__class__.__name__ + "()"
-
-    def __len__(self): 
-        return len(self.entries)
-
     @property
     def d(self):
         return self.mtree.d
 
     def is_full(self):
-        return len(self) == self.mtree.node_size
+        return len(self.entries) == self.mtree.node_size
 
     def is_empty(self):
-        return len(self) == 0
+        return len(self.entries) == 0
 
     def is_root(self):
         return self is self.mtree.root
 
-    def remove_entry(self, entry):
+    def remove(self, entry):
         self.entries.remove(entry)
 
-    def add_entry(self, entry):
+    def add(self, entry):
         if self.is_full():
             raise ValueError('Trying to add %s into a full node' % str(entry))
         self.entries.add(entry)
 
-    #TODO recomputes d(leaf, parent)!
     def update_node(self, entries, parent_entry):
         self.entries = entries
         self.parent_entry = parent_entry
         self._update_radius()
-
-    @abc.abstractmethod
-    def add(self, obj): # pragma: no cover
-        """Add obj into this subtree"""
-        pass
 
     @abc.abstractmethod         
     def _update_radius(self):
@@ -375,20 +360,7 @@ class LeafNode(AbstractNode):
                  parent_entry=None,
                  entries=None):
 
-        AbstractNode.__init__(self,
-                              mtree,
-                              parent_node,
-                              parent_entry,
-                              entries)
-    def add(self, obj):
-        distance_to_parent = self.d(obj, self.parent_entry.obj) \
-            if self.parent_entry else None
-        new_entry = Entry(obj, p_dist=distance_to_parent)
-        if not self.is_full():
-            self.entries.add(new_entry)
-        else:
-            self.mtree.split(self, new_entry, self.d)
-        assert self.is_root() or self.parent_node        
+        AbstractNode.__init__(self, mtree, parent_node, parent_entry, entries)
 
     def _update_radius(self):
         if not self.entries:
@@ -430,45 +402,7 @@ class InternalNode(AbstractNode):
                  parent_entry=None,
                  entries=None):
 
-        AbstractNode.__init__(self,
-                              mtree,
-                              parent_node,
-                              parent_entry,
-                              entries)
-
-    # TODO: apply optimization that uses the d of the parent to reduce the
-    # number of d computation performed. cf M-Tree paper 3.3
-    def add(self, obj):     
-        # put d(obj, e) in a dict to prevent recomputation
-        # I guess memoization could be used to make code clearer but that is
-        # too magic for me plus there is potentially a very large number of
-        # calls to memoize
-        dist_to_obj = {}
-        for entry in self.entries:
-            dist_to_obj[entry] = self.d(obj, entry.obj)
-
-        def find_best_entry_requiring_no_covering_radius_increase():
-            valid_entries = [e for e in self.entries
-                             if dist_to_obj[e] <= e.radius]
-            return min(valid_entries, key=dist_to_obj.get) \
-                if valid_entries else None
-                
-        def find_best_entry_minimizing_radius_increase():
-            entry = min(self.entries, key=lambda e: dist_to_obj[e] - e.radius)
-            # enlarge radius so that obj is in the covering radius of e
-            entry.radius = dist_to_obj[entry]
-            return entry
-
-        entry = find_best_entry_requiring_no_covering_radius_increase() or \
-            find_best_entry_minimizing_radius_increase()
-        entry.subtree.add(obj)
-        assert self.is_root() or self.parent_node
-
-    def _update_radius(self):
-        if not self.entries:
-            self.parent_entry.radius = 0
-        else:
-            self.parent_entry.radius = max(map(lambda e: e.p_dist + e.radius, self.entries))
+        AbstractNode.__init__(self,  mtree, parent_node, parent_entry, entries)
 
     def update_node(self, new_entries, new_parent_entry):
         AbstractNode.update_node(self,
@@ -476,6 +410,12 @@ class InternalNode(AbstractNode):
                                  new_parent_entry)
         for entry in self.entries:
             entry.subtree.parent_node = self
+
+    def _update_radius(self):
+        if not self.entries:
+            self.parent_entry.radius = 0
+        else:
+            self.parent_entry.radius = max(map(lambda e: e.p_dist + e.radius, self.entries))
 
     def could_contain_results(self,
                               query_obj,
