@@ -82,7 +82,7 @@ class MTree(object):
 
     def add(self, obj):
         self.sequential_data.add(obj)
-        self.root.add(obj)
+        self._insert(obj)
         self.size += 1
 
     def add_bulk(self, objects):
