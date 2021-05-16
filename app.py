@@ -1,7 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import mtree
-import random
 from time import time
 from contextlib import contextmanager
 

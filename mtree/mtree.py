@@ -72,7 +72,7 @@ class MTree(object):
 
     def seed_db(self, dimension, count, lower, upper):
         inp = [
-            tuple(random.sample(range(lower, upper), dimension))
+            tuple(map(lambda x: float(x) / 10, random.sample(range(lower*10, upper*10), dimension)))
             for i in range(count)
         ]
         self.add_bulk(inp)
