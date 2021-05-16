@@ -5,7 +5,6 @@ from itertools import islice
 import math
 import random
 from operator import itemgetter
-import pickle
 
 
 def euclidean_distance(a, b):
