@@ -122,7 +122,7 @@ class MTree(object):
                       p_dist=leaf.d(obj, leaf.parent_entry.obj) if leaf.parent_entry else None)
 
         if not leaf.is_full():
-            leaf.add(entry)
+            leaf.store(entry)
         else:
             self.split(leaf, entry)
 
@@ -176,8 +176,8 @@ class MTree(object):
             node.parent_node = new_root_node
             new_node.parent_node = new_root_node
 
-            new_root_node.add(o1_entry)
-            new_root_node.add(o2_entry)
+            new_root_node.store(o1_entry)
+            new_root_node.store(o2_entry)
 
             self.root = new_root_node
         else:
@@ -190,12 +190,12 @@ class MTree(object):
                 o2_entry.p_dist = self.d(o2_entry.obj, parent_node.parent_entry.obj)
 
             parent_node.remove(op)
-            parent_node.add(o1_entry)
+            parent_node.store(o1_entry)
 
             if parent_node.is_full():
                 self.split(parent_node, o2_entry)
             else:
-                parent_node.add(o2_entry)
+                parent_node.store(o2_entry)
                 new_node.parent_node = parent_node
         assert node.is_root() or node.parent_node
         assert new_node.is_root() or new_node.parent_node
@@ -300,13 +300,6 @@ class Entry(object):
         self.subtree = subtree
         self.p_dist = p_dist
 
-    def __repr__(self):
-        return "Entry(obj: %r, radius: %r, subtree: %r, dist: %r)" % (
-            self.obj,
-            self.radius,
-            self.subtree.repr_class() if self.subtree else self.subtree,
-            self.p_dist)
-
 
 class AbstractNode(object):
     __metaclass__ = abc.ABCMeta
@@ -333,7 +326,7 @@ class AbstractNode(object):
     def remove(self, entry):
         self.entries.remove(entry)
 
-    def add(self, entry):
+    def store(self, entry):
         if self.is_full():
             raise ValueError('Trying to add %s into a full node' % str(entry))
         self.entries.add(entry)
@@ -353,7 +346,6 @@ class AbstractNode(object):
         
 
 class LeafNode(AbstractNode):
-    """A leaf of the M-tree"""
     def __init__(self,
                  mtree,
                  parent_node=None,
@@ -394,8 +386,6 @@ class LeafNode(AbstractNode):
 
 
 class InternalNode(AbstractNode):
-    """An internal node of the M-tree"""
-
     def __init__(self,
                  mtree,
                  parent_node=None,
