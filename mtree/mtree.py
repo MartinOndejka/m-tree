@@ -69,9 +69,6 @@ class MTree(object):
         self.size = 0
         self.root = LeafNode(self)
 
-    def __len__(self):
-        return self.size
-
     def add(self, obj):
         self._insert(obj)
         self.size += 1
@@ -92,7 +89,7 @@ class MTree(object):
         distance to query_obj (from closest to furthest).
         If the tree has less objects than k, it will return all the
         elements of the tree."""
-        k = min(k, len(self))
+        k = min(k, self.size)
         if k == 0: return []
 
         # priority queue of subtrees not yet explored ordered by dmin
@@ -147,7 +144,7 @@ class MTree(object):
         entries.add(entry)
 
         # let op be the parent entry of node
-        op = node.parent_entry
+        op_entry = node.parent_entry
 
         # Allocating new node
         new_node = None
@@ -165,31 +162,28 @@ class MTree(object):
         o1_entry = Entry(o1, None, node, None)
         o2_entry = Entry(o2, None, new_node, None)
 
-        # Store partitioned entries into nodes
+        # Store partitioned entries into nodes and update parent entry radius and p_dist
         node.update_node(entries1, o1_entry)
         new_node.update_node(entries2, o2_entry)
 
-        # Store promoted routing entries into parent node
+        # Store promoted routing entries into parent node or a new root node
         if node.is_root():
-            new_root_node = InternalNode(node.mtree)
+            new_root = InternalNode(node.mtree)
+            self.root = new_root
 
-            node.parent_node = new_root_node
-            new_node.parent_node = new_root_node
+            node.parent_node = new_root
+            new_node.parent_node = new_root
 
-            new_root_node.store(o1_entry)
-            new_root_node.store(o2_entry)
-
-            self.root = new_root_node
+            new_root.store(o1_entry)
+            new_root.store(o2_entry)
         else:
             parent_node = node.parent_node
 
             if not parent_node.is_root():
-                # parent node has itself a parent, therefore the two entries we add
-                # in the parent must have distance_to_parent set appropriately
                 o1_entry.p_dist = self.d(o1_entry.obj, parent_node.parent_entry.obj)
                 o2_entry.p_dist = self.d(o2_entry.obj, parent_node.parent_entry.obj)
 
-            parent_node.remove(op)
+            parent_node.remove(op_entry)
             parent_node.store(o1_entry)
 
             if parent_node.is_full():
@@ -197,8 +191,6 @@ class MTree(object):
             else:
                 parent_node.store(o2_entry)
                 new_node.parent_node = parent_node
-        assert node.is_root() or node.parent_node
-        assert new_node.is_root() or new_node.parent_node
 
 
 class RangeSearch:
@@ -305,6 +297,8 @@ class AbstractNode(object):
     __metaclass__ = abc.ABCMeta
 
     def __init__(self, mtree, parent_node=None, parent_entry=None, entries=None):
+        if entries is None:
+            entries = set()
         self.mtree = mtree
         self.parent_node = parent_node
         self.parent_entry = parent_entry
@@ -317,9 +311,6 @@ class AbstractNode(object):
     def is_full(self):
         return len(self.entries) == self.mtree.node_size
 
-    def is_empty(self):
-        return len(self.entries) == 0
-
     def is_root(self):
         return self is self.mtree.root
 
@@ -327,8 +318,6 @@ class AbstractNode(object):
         self.entries.remove(entry)
 
     def store(self, entry):
-        if self.is_full():
-            raise ValueError('Trying to add %s into a full node' % str(entry))
         self.entries.add(entry)
 
     def update_node(self, entries, parent_entry):
