@@ -115,7 +115,7 @@ def knn_mtree_cb():
         messagebox.showerror(message="Invalid k")
     
     with timeit():
-        res = set(db.knn(query_vector, k))
+        res = set(db.knn_search(query_vector, k))
     
     result_output.delete(1.0, tk.END)
     result_output.insert(tk.INSERT, str(res))
