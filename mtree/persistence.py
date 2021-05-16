@@ -20,6 +20,7 @@ def load_tree(file_path, distance_function=euclidean_distance):
         except pickle.UnpicklingError:
             raise LoadError
 
-    mtree.d = distance_function
+
+    mtree.set_d_function(distance_function)
 
     return mtree
