@@ -292,11 +292,7 @@ class NN(object):
             self.rq = min(self.rq, dmax)
             return
         self.neighbours.append((obj, dmax))
-        for i in range(len(self)-1, 0, -1):
-            if self.neighbours[i][1] < self.neighbours[i-1][1]:
-                self.neighbours[i-1], self.neighbours[i] = self.neighbours[i], self.neighbours[i-1]
-            else:
-                break
+        self.neighbours.sort(key=lambda x: x[1])
         self.neighbours.pop()
 
     def result_list(self):
