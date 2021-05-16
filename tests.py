@@ -32,7 +32,7 @@ def main():
     
     print("Random kNN query with k 15")
     with timeit(db):
-        db.knn(query, 15)
+        db.knn_search(query, 15)
     
     print("Sequential")
     with timeit(db):
