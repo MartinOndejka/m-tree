@@ -125,39 +125,11 @@ class MTree(object):
 
         return set(map(itemgetter("obj"), distances[:k]))
 
-        
-
-    def knn(self, query_obj, k=1):
+    def knn_search(self, query_obj, k=1):
         self.dcall_counter = 0
-        """Return the k objects the most similar to query_obj.
-        Implementation of the k-Nearest Neighbor algorithm.
-        Returns a list of the k closest elements to query_obj, ordered by
-        distance to query_obj (from closest to furthest).
-        If the tree has less objects than k, it will return all the
-        elements of the tree."""
-        k = min(k, self.size)
-        if k == 0: return []
-
-        # priority queue of subtrees not yet explored ordered by dmin
-        pr = []
-        heappush(pr, PrEntry(self.root, 0, 0))
-
-        # at the end will contain the results
-        nn = NN(k)
-
-        while pr:
-            prEntry = heappop(pr)
-            if(prEntry.dmin > nn.search_radius()):
-                # best candidate is too far, we won't have better a answer
-                # we can stop
-                break
-            prEntry.tree.search(query_obj, pr, nn, prEntry.d_query)
-
-            # could prune pr here
-            # (the paper prunes after each entry insertion, instead whe could
-            # prune once after handling all the entries of a node)
-            
-        return nn.result_list()
+        s = knnSearch(self)
+        s.search(self.root, query_obj, k)
+        return s.result
 
     def _insert(self, obj):
         leaf = self._find_leaf(self.root, obj)
@@ -277,61 +249,68 @@ class RangeSearch:
                     if d_oi_q <= r:
                         self.result.add(o_i.obj)
 
-    
+
+class knnSearch:
+    def __init__(self, mtree):
+        self.result = None
+        self.mtree = mtree
+
+    def search(self, node, query, k):
+        if k <= 0:
+            return []
+
+        pr = []
+        heappush(pr, PrObject(node, 0, 0))
+
+        # at the end will contain the results
+        nn = NN(k)
+
+        while pr:
+            prEntry = heappop(pr)
+            if prEntry.dmin > nn.rq:
+                break
+            prEntry.tree.search(query, pr, nn, prEntry.d_query)
+
+        self.result = nn.result_list()
+
+
 NNEntry = collections.namedtuple('NNEntry', 'obj dmax')
+
+
 class NN(object):
     def __init__(self, size):
-        self.elems = [NNEntry(None, float("inf"))] * size
-        #store dmax in NN as described by the paper
-        #but it would be more logical to store it separately
-        self.dmax = float("inf")
+        self.nieghbours = [NNEntry(None, float("inf"))] * size
+        self.rq = float("inf")
 
     def __len__(self):
-        return len(self.elems)
-
-    def search_radius(self):
-        """The search radius of the knn search algorithm.
-        aka dmax
-        The search radius is dynamic."""
-        return self.dmax
+        return len(self.nieghbours)
 
     def update(self, obj, dmax):
         if obj == None:
             #internal node
-            self.dmax = min(self.dmax, dmax)
+            self.rq = min(self.rq, dmax)
             return
-        self.elems.append(NNEntry(obj, dmax))
+        self.nieghbours.append(NNEntry(obj, dmax))
         for i in range(len(self)-1, 0, -1):
-            if self.elems[i].dmax < self.elems[i-1].dmax:
-                self.elems[i-1], self.elems[i] = self.elems[i], self.elems[i-1]
+            if self.nieghbours[i].dmax < self.nieghbours[i-1].dmax:
+                self.nieghbours[i-1], self.nieghbours[i] = self.nieghbours[i], self.nieghbours[i-1]
             else:
                 break
-        self.elems.pop()
+        self.nieghbours.pop()
 
     def result_list(self):
-        result = map(lambda entry: entry.obj, self.elems)
+        result = map(lambda entry: entry.obj, self.nieghbours)
         return result
-
-    def __repr__(self):
-        return "NN(%r)" % self.elems
             
 
-class PrEntry(object):
+class PrObject(object):
     def __init__(self, tree, dmin, d_query):
-        """
-        Constructor.
-        arguments:
-        d_query: distance d to searched query object
-        """
         self.tree = tree
         self.dmin = dmin
         self.d_query = d_query
 
     def __lt__(self, other):
         return self.dmin < other.dmin
-
-    def __repr__(self):
-        return "PrEntry(tree:%r, dmin:%r)" % (self.tree, self.dmin)
 
     
 class Entry(object):
@@ -389,7 +368,7 @@ class LeafNode(AbstractNode):
 
     def could_contain_results(self,
                               query_obj,
-                              search_radius,
+                              rq,
                               distance_to_parent, 
                               d_parent_query):
         """Determines without any d computation if there could be
@@ -399,16 +378,16 @@ class LeafNode(AbstractNode):
             return True
         
         return abs(d_parent_query - distance_to_parent)\
-                <= search_radius
+                <= rq
         
     def search(self, query_obj, pr, nn, d_parent_query):
         for entry in self.entries:
             if self.could_contain_results(query_obj,
-                                          nn.search_radius(),
+                                          nn.rq,
                                           entry.p_dist,
                                           d_parent_query):
                 distance_entry_to_q = self.d(entry.obj, query_obj)
-                if distance_entry_to_q <= nn.search_radius():
+                if distance_entry_to_q <= nn.rq:
                     nn.update(entry.obj, distance_entry_to_q)
 
 
@@ -431,7 +410,7 @@ class InternalNode(AbstractNode):
 
     def could_contain_results(self,
                               query_obj,
-                              search_radius,
+                              rq,
                               entry,
                               d_parent_query):
         """Determines without any d computation if there could be
@@ -442,19 +421,19 @@ class InternalNode(AbstractNode):
         
         parent_obj = self.parent_entry.obj
         return abs(d_parent_query - entry.p_dist)\
-                <= search_radius + entry.radius
+                <= rq + entry.radius
             
     def search(self, query_obj, pr, nn, d_parent_query):
         for entry in self.entries:
             if self.could_contain_results(query_obj,
-                                          nn.search_radius(),
+                                          nn.rq,
                                           entry,
                                           d_parent_query):
                 d_entry_query = self.d(entry.obj, query_obj)
                 entry_dmin = max(d_entry_query - \
                                      entry.radius, 0)
-                if entry_dmin <= nn.search_radius():
-                    heappush(pr, PrEntry(entry.subtree, entry_dmin, d_entry_query))
+                if entry_dmin <= nn.rq:
+                    heappush(pr, PrObject(entry.subtree, entry_dmin, d_entry_query))
                     entry_dmax = d_entry_query + entry.radius
-                    if entry_dmax < nn.search_radius():
+                    if entry_dmax < nn.rq:
                         nn.update(None, entry_dmax)
