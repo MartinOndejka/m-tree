@@ -1,2 +1,2 @@
-from . import mtree
-from .mtree import MTree
+from . import mtree, persistence
+from .mtree import MTree, euclidean_distance
