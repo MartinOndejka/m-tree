@@ -1,7 +1,6 @@
 import abc
 from heapq import heappush, heappop
 import collections
-from itertools import islice
 import math
 import random
 from operator import itemgetter
@@ -75,7 +74,7 @@ class MTree(object):
 
     def seed_db(self, dimension, count, lower, upper):
         inp = [
-            tuple(random.sample(range(lower, upper), dimension))
+            tuple(map(lambda x: float(x) / 10, random.sample(range(lower*10, upper*10), dimension)))
             for i in range(count)
         ]
         self.add_bulk(inp)
