@@ -73,6 +73,13 @@ class MTree(object):
         self.sequential_data = set()
         self.dcall_counter = 0
 
+    def seed_db(self, dimension, count, lower, upper):
+        inp = [
+            tuple(random.sample(range(lower, upper), dimension))
+            for i in range(count)
+        ]
+        self.add_bulk(inp)
+
     def inc_counter(self, d):
         def closure(*args, **kwargs):
             self.dcall_counter += 1

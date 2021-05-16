@@ -145,13 +145,14 @@ def generate_cb():
             try:
                 dimension = int(dimension_wd.get())
                 count = int(vector_count_wd.get())
+                lower = int(lower_range_wd.get())
+                upper = int(upper_range_wd.get())
                 db = mtree.MTree(node_size=int(node_size_wd.get()), dimensions=dimension)
             except ValueError as e:
                 return messagebox.showerror(message=str(e))
 
-            inp = [tuple(random.sample(range(0, 100), dimension)) for i in range(count)]
-
-            db.add_bulk(inp)
+            db.seed_db(dimension, count, lower, upper)
+            
             update_ui()
 
         insert_entry.insert(0, ", ".join(map(str, range(dimension))))
